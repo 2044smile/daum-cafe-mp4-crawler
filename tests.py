@@ -1,16 +1,16 @@
 import os
 import time
-import requests
-import re
 from pathlib import Path
 from dotenv import load_dotenv
-from selenium import webdriver
+
+from seleniumwire import webdriver
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from webdriver_manager.chrome import ChromeDriverManager
+
 
 load_dotenv()
 
@@ -23,373 +23,551 @@ TARGET_CAFE_URL = os.getenv('TARGET_CAFE_URL')
 DOWNLOAD_DIR = Path("downloads")
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 
-if not all([KAKAO_ID, KAKAO_PASSWORD, TARGET_CAFE_URL]):
-    raise ValueError("필수 환경변수가 설정되지 않았습니다.")
+def analyze_post_streams(browser, post_url, post_title):
+    """게시글의 네트워크 스트림 분석"""
 
-chrome_options = webdriver.ChromeOptions()
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    print(f"\n{'='*60}")
+    print(f"🎬 게시글 스트림 분석: {post_title[:30]}...")
+    print(f"{'='*60}")
 
-def switch_to_cafe_iframe():
-    """카페 iframe으로 전환"""
     try:
-        # 잠시 대기
-        time.sleep(3)
-        
-        # iframe 찾기
-        iframes = driver.find_elements(By.TAG_NAME, "iframe")
-        print(f"발견된 iframe 개수: {len(iframes)}")
-        
+        # 현재 네트워크 요청 기록 시작점 저장
+        initial_request_count = len(browser.requests)
+        print(f"📊 분석 시작 전 네트워크 요청: {initial_request_count}개")
+
+        # 게시글로 이동 (iframe 유지된 상태)
+        print(f"🔄 게시글로 이동 중...")
+        browser.get(post_url)
+        time.sleep(5)  # 페이지 로딩 및 비디오 로딩 대기
+
+        # 비디오 요소 트리거 (자동 재생 또는 로딩 유도)
+        print(f"🎥 비디오 요소 트리거 시도...")
+        try:
+            # 비디오 요소 찾기
+            videos = browser.find_elements(By.TAG_NAME, "video")
+            print(f"  📺 발견된 비디오 요소: {len(videos)}개")
+
+            # iframe 내부의 비디오도 확인
+            iframes = browser.find_elements(By.TAG_NAME, "iframe")
+            print(f"  📺 발견된 iframe: {len(iframes)}개")
+
+            # 비디오 재생 시도 (네트워크 요청 유도)
+            for i, video in enumerate(videos):
+                try:
+                    browser.execute_script("arguments[0].play();", video)
+                    print(f"    🎬 비디오 {i+1} 재생 시도")
+                    time.sleep(2)
+                except:
+                    pass
+
+        except Exception as e:
+            print(f"  ⚠️ 비디오 트리거 오류: {e}")
+
+        # 추가 로딩 대기
+        print(f"⏳ 네트워크 스트림 로딩 대기...")
+        time.sleep(8)
+
+        # 새로운 네트워크 요청 분석
+        new_requests = browser.requests[initial_request_count:]
+        print(f"📊 새로운 네트워크 요청: {len(new_requests)}개")
+
+        # 스트림 파일 분석
+        download_targets = analyze_stream_requests(new_requests)
+
+        # 480p MP4 파일 다운로드
+        if download_targets:
+            print(f"\n📥 480p MP4 파일 다운로드 시작...")
+
+            # 🥇 1순위: 간단한 requests 다운로드 (가장 확실!)
+            print(f"\n🎯 간단한 requests 다운로드 시도...")
+
+            # 간단한 다운로드 구현
+            import requests
+            success_count = 0
+
+            for i, url in enumerate(download_targets, 1):
+                try:
+                    print(f"\n[{i}/{len(download_targets)}] 다운로드 중...")
+                    print(f"🔗 URL: {url[:80]}...")
+
+                    # 파일명 생성
+                    filename = f"{post_title[:20]}_{i}_480p.mp4".replace('/', '_').replace('\\', '_').replace(':', '_')
+                    filepath = DOWNLOAD_DIR / filename
+
+                    print(f"📁 저장할 파일: {filename}")
+
+                    # 간단한 스트리밍 다운로드
+                    with requests.get(url, stream=True, timeout=30) as r:
+                        r.raise_for_status()
+
+                        total_size = int(r.headers.get('content-length', 0))
+                        if total_size > 0:
+                            print(f"📊 파일 크기: {total_size / (1024*1024):.2f} MB")
+
+                        downloaded_size = 0
+
+                        with open(filepath, "wb") as f:
+                            for chunk in r.iter_content(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded_size += len(chunk)
+
+                                    if total_size > 0:
+                                        progress = (downloaded_size / total_size) * 100
+                                        print(f"\r  📈 진행률: {progress:.1f}%", end='', flush=True)
+
+                    if filepath.exists():
+                        file_size = filepath.stat().st_size
+                        print(f"\n✅ 다운로드 완료: {file_size / (1024*1024):.2f} MB")
+                        success_count += 1
+
+                    time.sleep(1)
+
+                except Exception as e:
+                    print(f"\n❌ 다운로드 실패: {e}")
+
+            print(f"\n📊 다운로드 결과: {success_count}/{len(download_targets)}개 성공")
+
+            # 다운로드 실패시에만 간단한 알림
+            if success_count == 0:
+                print(f"\n⚠️ 모든 다운로드가 실패했습니다. URL이나 네트워크 상태를 확인해주세요.")
+
+        else:
+            print(f"\n⚠️ 다운로드할 480p MP4 파일이 없습니다.")
+
+    except Exception as e:
+        print(f"❌ 게시글 스트림 분석 오류: {e}")
+        import traceback
+        traceback.print_exc()
+
+def analyze_stream_requests(requests):
+    """네트워크 요청에서 스트림 파일들 분석"""
+
+    print(f"\n🔍 스트림 파일 분석 시작...")
+    print(f"{'='*50}")
+
+    # 파일 타입별 분류 및 다운로드 대상 초기화
+    mp4_files = []
+    hls_files = []  # .m3u8, .ts
+    dash_files = []  # .mpd, .m4s
+    other_video_files = []
+    kamp_requests = []
+    download_targets = []  # 🔧 다운로드 대상 초기화
+
+    for i, request in enumerate(requests):
+        try:
+            url = request.url.lower()
+
+            # kamp.daum.net 요청 (streams 데이터)
+            if 'kamp.daum.net' in url:
+                kamp_requests.append(request)
+                print(f"  🎯 kamp 요청 발견: {request.url}")
+
+            # MP4 파일
+            elif '.mp4' in url:
+                mp4_files.append(request)
+
+                # 480p 확인
+                if '480p' in url:
+                    print(f"  ✅ 480p MP4 발견: {request.url}")
+                else:
+                    print(f"  📹 MP4 파일: {request.url}")
+
+            # HLS 파일들
+            elif '.m3u8' in url or '.ts' in url:
+                hls_files.append(request)
+                print(f"  📡 HLS 파일: {request.url}")
+
+            # DASH 파일들
+            elif '.mpd' in url or '.m4s' in url:
+                dash_files.append(request)
+                print(f"  📊 DASH 파일: {request.url}")
+
+            # 기타 비디오 관련 파일들
+            elif any(ext in url for ext in ['.webm', '.avi', '.mov', '.flv']):
+                other_video_files.append(request)
+                print(f"  🎥 기타 비디오: {request.url}")
+
+        except Exception as e:
+            print(f"  ❌ 요청 [{i}] 분석 오류: {e}")
+
+    # 결과 요약
+    print(f"\n📊 스트림 파일 분석 결과:")
+    print(f"{'='*50}")
+    print(f"  🎯 kamp 요청: {len(kamp_requests)}개")
+    print(f"  ✅ MP4 파일: {len(mp4_files)}개")
+    print(f"  📡 HLS 파일: {len(hls_files)}개")
+    print(f"  📊 DASH 파일: {len(dash_files)}개")
+    print(f"  🎥 기타 비디오: {len(other_video_files)}개")
+
+    # kamp 요청에서 streams 데이터 추출 (개선된 파싱)
+    if kamp_requests:
+        print(f"\n🔍 kamp 요청에서 streams 데이터 추출...")
+        for i, request in enumerate(kamp_requests):
+            try:
+                if request.response and request.response.body:
+                    body = request.response.body.decode('utf-8', errors='ignore')
+
+                    if 'streams' in body:
+                        print(f"  ✅ kamp 요청 [{i+1}]에서 streams 데이터 발견!")
+
+                        # JSON 파싱 시도
+                        try:
+                            import json
+                            data = json.loads(body)
+
+                            if 'streams' in data:
+                                streams = data['streams']
+                                print(f"    📊 streams 데이터 타입: {type(streams)}")
+
+                                # streams가 리스트인 경우 (name, protocol 구조)
+                                if isinstance(streams, list):
+                                    print(f"    🎬 streams 배열에서 480p MP4 검색:")
+                                    for j, stream in enumerate(streams):
+                                        if isinstance(stream, dict):
+                                            name = stream.get('name', '')
+                                            protocol = stream.get('protocol', '')
+                                            url = stream.get('url', '')
+
+                                            print(f"      [{j+1}] name: '{name}', protocol: '{protocol}'")
+
+                                            # 480p + mp4 조건 확인
+                                            if '480' in name.lower() and 'mp4' in protocol.lower():
+                                                print(f"      ✅ 480p MP4 스트림 발견!")
+                                                print(f"      🔗 URL: {url}")
+                                                download_targets.append(url)
+                                            elif url and '.mp4' in url.lower() and '480p' in url.lower():
+                                                print(f"      ✅ URL에서 480p MP4 패턴 발견!")
+                                                print(f"      🔗 URL: {url}")
+                                                download_targets.append(url)
+
+                                # streams가 딕셔너리인 경우 (기존 방식)
+                                elif isinstance(streams, dict):
+                                    print(f"    🎬 streams 딕셔너리에서 480p 검색:")
+                                    for quality, stream_data in streams.items():
+                                        print(f"      화질: '{quality}'")
+
+                                        if '480' in quality.lower():
+                                            if isinstance(stream_data, str):
+                                                print(f"      ✅ 480p URL: {stream_data}")
+                                                download_targets.append(stream_data)
+                                            elif isinstance(stream_data, dict) and 'url' in stream_data:
+                                                url = stream_data['url']
+                                                print(f"      ✅ 480p URL: {url}")
+                                                download_targets.append(url)
+
+                        except json.JSONDecodeError:
+                            print(f"    ⚠️ JSON 파싱 실패, 원시 데이터에서 streams 검색")
+
+                            # 원시 텍스트에서 480p URL 패턴 찾기
+                            import re
+                            mp4_pattern = r'https?://[^\s"\']+480[pP][^\s"\']*\.mp4[^\s"\']*'
+                            matches = re.findall(mp4_pattern, body)
+
+                            if matches:
+                                print(f"    ✅ 원시 데이터에서 {len(matches)}개 480p MP4 URL 발견")
+                                for match in matches:
+                                    print(f"      🔗 {match}")
+                                    download_targets.append(match)
+                    else:
+                        print(f"  ⚠️ kamp 요청 [{i+1}]에 streams 데이터 없음")
+
+            except Exception as e:
+                print(f"  ❌ kamp 요청 [{i+1}] 분석 오류: {e}")
+
+    # 일반 MP4 요청에서도 480p 찾기 (kamp에서 못 찾은 경우)
+    for request in mp4_files:
+        url = request.url
+        if '480p' in url.lower() and url not in download_targets:
+            download_targets.append(url)
+            print(f"  ✅ 일반 요청에서 480p 발견: {url}")
+
+    # 최종 결과 표시
+    print(f"\n🎯 최종 다운로드 대상:")
+    print(f"{'='*50}")
+
+    if download_targets:
+        for i, url in enumerate(download_targets, 1):
+            print(f"  [{i}] {url}")
+    else:
+        print(f"  ⚠️ 480p MP4 파일을 찾을 수 없습니다.")
+
+        # 다른 화질 MP4도 표시
+        if mp4_files:
+            print(f"\n📋 발견된 다른 화질 MP4:")
+            for request in mp4_files:
+                url = request.url
+                print(f"    📹 {url}")
+
+    return download_targets
+
+if __name__ == "__main__":
+    customService = Service(ChromeDriverManager().install())
+    customOption = Options()
+
+    # 로그인
+    browser = webdriver.Chrome(service=customService, options=customOption)
+    wait = WebDriverWait(browser, 10)
+
+    browser.get(LOGIN_URL)
+    time.sleep(3)
+
+    # ID 입력 필드 대기 및 입력
+    try:
+        id_input = wait.until(EC.element_to_be_clickable((By.NAME, "loginId")))
+        id_input.clear()
+        time.sleep(0.5)
+
+        id_input.send_keys(KAKAO_ID)
+        print(f"ID 입력 완료: {KAKAO_ID}")
+    except Exception as e:
+        print(f"ID 입력 실패: {e}")
+    
+    # 비밀번호 입력 필드 대기 및 입력
+    try:
+        pw_input = wait.until(EC.element_to_be_clickable((By.NAME, "password")))
+        pw_input.clear()
+        time.sleep(0.5)
+        pw_input.send_keys(KAKAO_PASSWORD)
+        print("비밀번호 입력 완료")
+    except Exception as e:
+        print(f"비밀번호 입력 실패: {e}")
+    
+    try:
+        login_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit']")))
+        browser.execute_script("arguments[0].click();", login_btn)
+        print("로그인 버튼 클릭 완료")
+    except Exception as e:
+        print(f"로그인 버튼 클릭 실패 {e}")
+    
+    # 로그인 처리 대기
+    time.sleep(5)
+
+    # 현재 URL 확인
+    print(f"현재 URL: {browser.current_url}")
+
+    # 카페로 이동
+    time.sleep(5)
+    browser.get(TARGET_CAFE_URL)
+    time.sleep(5)
+
+    # 특정 게시판으로 이동
+    board_url = f"{TARGET_CAFE_URL}/SjqQ"
+    browser.get(board_url)
+    print(f"현재 URL: {browser.current_url}")
+    time.sleep(5)
+
+    # 게시글 목록 확인
+    print("=" * 60)
+    print("🔍 게시판 분석 시작")
+    print("=" * 60)
+
+    # 1. 페이지 로딩 완료 대기
+    print("⏳ 페이지 로딩 대기 중...")
+    wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+
+    time.sleep(3)
+
+    # 1-1. iframe 확인 및 전환
+    print("🔍 iframe 확인 중...")
+
+    # iframe 찾기
+    iframes = browser.find_elements(By.TAG_NAME, "iframe")
+    print(f"📊 발견된 iframe: {len(iframes)}개")
+
+    for i, iframe in enumerate(iframes):
+        try:
+            iframe_src = iframe.get_attribute("src") or ""
+            iframe_id = iframe.get_attribute("id") or ""
+            iframe_name = iframe.get_attribute("name") or ""
+            print(f"  [{i+1}] iframe - id: '{iframe_id}', name: '{iframe_name}', src: {iframe_src[:100]}...")
+        except Exception as e:
+            print(f"  [{i+1}] iframe 정보 확인 오류: {e}")
+
+    # 메인 게시판 iframe으로 전환 시도
+    board_iframe_found = False
+
+    # 실제로 작동하는 iframe만 (로그 가독성 향상)
+    iframe_candidates = [
+        "down"
+    ]
+
+    for iframe_name in iframe_candidates:
+        try:
+            print(f"🔄 iframe '{iframe_name}' 전환 시도...")
+            browser.switch_to.frame(iframe_name)
+
+            # iframe 전환 후 잠시 대기 (tests.py 방식)
+            time.sleep(2)
+
+            # iframe 내부에서 article-list 확인 (tests.py 방식)
+            try:
+                browser.find_element(By.ID, "article-list")
+                print(f"✅ iframe '{iframe_name}' 전환 성공! (article-list 발견)")
+
+                # 바로 여기서 게시글 리스트 확인
+                print("🔍 게시글 리스트 즉시 확인 중...")
+
+                # 게시글 행 찾기 (tests.py 방식)
+                row_selectors = [
+                    "#article-list tbody tr:not(.state_info)",  # 공지사항 제외
+                    "#article-list tbody tr",  # 모든 행
+                    "#article-list tr:not(.state_info)",  # tbody 없이
+                    "#article-list tr",  # 모든 행 (tbody 없이)
+                ]
+
+                post_rows = []
+                for selector in row_selectors:
+                    try:
+                        rows = browser.find_elements(By.CSS_SELECTOR, selector)
+                        if rows:
+                            post_rows = rows
+                            print(f"  ✅ 게시글 행 {len(post_rows)}개 발견 (선택자: {selector})")
+                            break
+                    except:
+                        continue
+
+                if post_rows:
+                    # 처음 3개 게시글 정보 확인
+                    for i, row in enumerate(post_rows[:3]):
+                        try:
+                            # 제목 칸 찾기
+                            title_cell = None
+                            title_selectors = [".td_title", ".title", "td.title", "td:nth-child(3)", "td:nth-child(4)"]
+
+                            for selector in title_selectors:
+                                try:
+                                    title_cell = row.find_element(By.CSS_SELECTOR, selector)
+                                    break
+                                except:
+                                    continue
+
+                            if not title_cell:
+                                # 모든 td에서 링크가 있는 것 찾기
+                                tds = row.find_elements(By.TAG_NAME, "td")
+                                for td in tds:
+                                    links = td.find_elements(By.TAG_NAME, "a")
+                                    if links:
+                                        title_cell = td
+                                        break
+
+                            if title_cell:
+                                # 링크 찾기
+                                link_elements = title_cell.find_elements(By.TAG_NAME, "a")
+                                for link in link_elements:
+                                    href = link.get_attribute('href')
+                                    title = link.text.strip()
+
+                                    if href and title and len(title) > 2:
+                                        # 게시글 URL 패턴 확인
+                                        valid_patterns = ['bbs_read', 'read', 'view', 'article']
+                                        is_valid_link = any(pattern in href.lower() for pattern in valid_patterns)
+
+                                        if is_valid_link:
+                                            print(f"    [{i+1}] {title[:50]}...")
+                                            print(f"        URL: {href}")
+                                            break
+
+                        except Exception as e:
+                            print(f"    [{i+1}] 행 분석 오류: {e}")
+                else:
+                    print("  ❌ 게시글 행을 찾을 수 없음")
+
+                # 첫 번째 게시글에 들어가서 네트워크 스트림 확인
+                if post_rows:
+                    print("\n🎬 첫 번째 게시글에서 네트워크 스트림 분석 시작...")
+                    first_post_url = None
+
+                    # 첫 번째 게시글 URL 추출
+                    try:
+                        first_row = post_rows[0]
+                        title_cell = None
+                        title_selectors = [".td_title", ".title", "td.title", "td:nth-child(3)", "td:nth-child(4)"]
+
+                        for selector in title_selectors:
+                            try:
+                                title_cell = first_row.find_element(By.CSS_SELECTOR, selector)
+                                break
+                            except:
+                                continue
+
+                        if not title_cell:
+                            tds = first_row.find_elements(By.TAG_NAME, "td")
+                            for td in tds:
+                                links = td.find_elements(By.TAG_NAME, "a")
+                                if links:
+                                    title_cell = td
+                                    break
+
+                        if title_cell:
+                            link_elements = title_cell.find_elements(By.TAG_NAME, "a")
+                            for link in link_elements:
+                                href = link.get_attribute('href')
+                                title = link.text.strip()
+
+                                if href and title and len(title) > 2:
+                                    valid_patterns = ['bbs_read', 'read', 'view', 'article']
+                                    is_valid_link = any(pattern in href.lower() for pattern in valid_patterns)
+
+                                    if is_valid_link:
+                                        first_post_url = href
+                                        first_post_title = title
+                                        print(f"  📋 분석할 게시글: {first_post_title[:50]}...")
+                                        print(f"  🔗 URL: {first_post_url}")
+                                        break
+
+                    except Exception as e:
+                        print(f"  ❌ 첫 번째 게시글 URL 추출 실패: {e}")
+
+                    # 게시글로 이동하여 네트워크 스트림 분석
+                    if first_post_url:
+                        analyze_post_streams(browser, first_post_url, first_post_title)
+
+                board_iframe_found = True
+                break
+            except:
+                print(f"  ⚠️ iframe '{iframe_name}' - article-list 없음")
+                browser.switch_to.default_content()
+                continue
+
+        except Exception as e:
+            print(f"  ❌ iframe '{iframe_name}' 전환 실패: {e}")
+            # 메인 프레임으로 돌아가기
+            try:
+                browser.switch_to.default_content()
+            except:
+                pass
+
+    # 이름으로 안되면 인덱스로 시도
+    if not board_iframe_found and len(iframes) > 0:
         for i, iframe in enumerate(iframes):
             try:
-                iframe_src = iframe.get_attribute('src')
-                iframe_name = iframe.get_attribute('name')
-                iframe_id = iframe.get_attribute('id')
-                
-                print(f"iframe {i+1}: src={iframe_src}, name={iframe_name}, id={iframe_id}")
-                
-                # 카페 관련 iframe인지 확인 (보통 cafe_main이나 비슷한 이름)
-                if (iframe_name and 'cafe' in iframe_name.lower()) or \
-                   (iframe_id and 'cafe' in iframe_id.lower()) or \
-                   (iframe_src and 'cafe' in iframe_src):
-                    
-                    print(f"카페 iframe으로 전환: {iframe_name or iframe_id}")
-                    driver.switch_to.frame(iframe)
-                    
-                    # iframe 전환 후 잠시 대기
-                    time.sleep(2)
-                    
-                    # iframe 내부에서 article-list 확인
-                    try:
-                        article_table = driver.find_element(By.ID, "article-list")
-                        print("✅ iframe에서 article-list 발견!")
-                        return True
-                    except:
-                        print("이 iframe에는 article-list가 없음")
-                        driver.switch_to.default_content()
-                        continue
-                        
-            except Exception as e:
-                print(f"iframe {i+1} 처리 실패: {e}")
-                driver.switch_to.default_content()
-                continue
-        
-        # 특정 iframe 이름으로 직접 시도
-        try:
-            driver.switch_to.frame("cafe_main")
-            print("✅ cafe_main iframe으로 전환")
-            return True
-        except:
-            print("cafe_main iframe 없음")
-        
-        print("❌ 적절한 iframe을 찾지 못함")
-        return False
-        
-    except Exception as e:
-        print(f"iframe 전환 실패: {e}")
-        return False
+                print(f"🔄 iframe 인덱스 [{i}] 전환 시도...")
+                browser.switch_to.default_content()  # 메인으로 돌아가기
+                browser.switch_to.frame(i)
 
-def download_mp4(url, filename):
-    """MP4 파일 다운로드"""
-    try:
-        print(f"다운로드 시작: {filename}")
-        
-        session = requests.Session()
-        # Selenium 쿠키를 requests에 추가
-        for cookie in driver.get_cookies():
-            session.cookies.set(cookie['name'], cookie['value'])
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': driver.current_url
-        }
-        
-        response = session.get(url, headers=headers)
-        response.raise_for_status()
-        
-        filepath = DOWNLOAD_DIR / filename
-        with open(filepath, 'wb') as f:
-            f.write(response.content)
-        
-        print(f"✅ 다운로드 완료: {filepath}")
-        return True
-        
-    except Exception as e:
-        print(f"❌ 다운로드 실패: {filename} - {e}")
-        return False
-
-def extract_mp4_urls():
-    """현재 페이지에서 MP4 URL들 추출"""
-    mp4_urls = []
-    
-    # 방법 1: video 태그
-    video_elements = driver.find_elements(By.TAG_NAME, "video")
-    for video in video_elements:
-        src = video.get_attribute("src")
-        if src and src.endswith('.mp4'):
-            mp4_urls.append(src)
-    
-    # 방법 2: source 태그
-    source_elements = driver.find_elements(By.TAG_NAME, "source")
-    for source in source_elements:
-        src = source.get_attribute("src")
-        if src and src.endswith('.mp4'):
-            mp4_urls.append(src)
-    
-    # 방법 3: a 태그 mp4 링크
-    link_elements = driver.find_elements(By.TAG_NAME, "a")
-    for link in link_elements:
-        href = link.get_attribute("href")
-        if href and href.endswith('.mp4'):
-            mp4_urls.append(href)
-    
-    # 방법 4: 페이지 소스에서 정규식
-    page_source = driver.page_source
-    mp4_pattern = r'https?://[^\s"\'<>]+\.mp4[^\s"\'<>]*'
-    regex_matches = re.findall(mp4_pattern, page_source, re.IGNORECASE)
-    mp4_urls.extend(regex_matches)
-    
-    # 중복 제거
-    mp4_urls = list(set(mp4_urls))
-    return mp4_urls
-
-def get_post_links_from_current_page():
-    """현재 페이지에서 게시글 링크들 수집"""
-    post_links = []
-    
-    try:
-        # iframe으로 전환
-        if not switch_to_cafe_iframe():
-            print("iframe 전환 실패")
-            return []
-        
-        # 테이블 로딩 확인
-        wait = WebDriverWait(driver, 10)
-        table = wait.until(EC.presence_of_element_located((By.ID, "article-list")))
-        
-        print("게시글 테이블 발견됨")
-        
-        # 모든 게시글 행 찾기 (공지사항 제외)
-        post_rows = driver.find_elements(By.CSS_SELECTOR, "#article-list tr:not(.state_info)")
-        print(f"일반 게시글 행: {len(post_rows)}개")
-        
-        if not post_rows:
-            # 공지사항 포함해서 다시 시도
-            post_rows = driver.find_elements(By.CSS_SELECTOR, "#article-list tr")
-            print(f"전체 게시글 행 (공지 포함): {len(post_rows)}개")
-        
-        for i, row in enumerate(post_rows):
-            try:
-                # 각 행에서 제목 칸 찾기
-                title_cell = row.find_element(By.CLASS_NAME, "td_title")
-                
-                # 제목 칸 안의 링크 찾기
-                link_elements = title_cell.find_elements(By.TAG_NAME, "a")
-                
-                for link in link_elements:
-                    href = link.get_attribute('href')
-                    title = link.text.strip()
-                    
-                    # 유효한 게시글 링크인지 확인
-                    if href and 'bbs_read' in href and title and len(title) > 1:
-                        post_links.append({
-                            'url': href,
-                            'title': title
-                        })
-                        print(f"  {len(post_links)}. {title}")
-                        break  # 첫 번째 유효한 링크만 가져오기
-                        
-            except Exception as e:
-                print(f"행 {i} 처리 중 오류: {e}")
-                continue
-        
-        print(f"총 {len(post_links)}개 게시글 링크 수집")
-        
-        # iframe에서 나가기
-        driver.switch_to.default_content()
-        return post_links
-        
-    except Exception as e:
-        print(f"게시글 수집 실패: {e}")
-        
-        # iframe에서 나가기
-        driver.switch_to.default_content()
-        
-        # 디버깅: 다른 방법으로 링크 찾기
-        try:
-            print("대안 방법으로 링크 찾기...")
-            
-            # iframe 다시 시도
-            if switch_to_cafe_iframe():
-                # 모든 링크 중에서 bbs_read 포함된 것들 찾기
-                all_links = driver.find_elements(By.CSS_SELECTOR, "a[href*='bbs_read']")
-                print(f"bbs_read 포함 링크: {len(all_links)}개")
-                
-                for link in all_links:
-                    href = link.get_attribute('href')
-                    title = link.text.strip()
-                    
-                    if title and len(title) > 1:
-                        post_links.append({
-                            'url': href,
-                            'title': title
-                        })
-                
-                print(f"대안 방법으로 {len(post_links)}개 수집")
-                driver.switch_to.default_content()
-                return post_links
-            
-        except Exception as e2:
-            print(f"대안 방법도 실패: {e2}")
-            driver.switch_to.default_content()
-            return []
-
-def click_next_page():
-    """다음 페이지 클릭"""
-    try:
-        # iframe으로 전환
-        if not switch_to_cafe_iframe():
-            return False
-        
-        # 페이지네이션 영역에서 다음 버튼 찾기
-        next_selectors = [
-            ".paging_g .btn_next:not([disabled])",  # 활성화된 다음 버튼
-            ".paging_g .btn_item.btn_next:not([disabled])",
-            ".list_paging li:last-child a",  # 마지막 페이지 번호
-        ]
-        
-        for selector in next_selectors:
-            try:
-                next_button = driver.find_element(By.CSS_SELECTOR, selector)
-                if next_button.is_enabled() and next_button.is_displayed():
-                    driver.execute_script("arguments[0].click();", next_button)
-                    print("다음 페이지 클릭 성공")
-                    driver.switch_to.default_content()
-                    time.sleep(3)
-                    return True
-            except:
-                continue
-        
-        # 숫자 페이지 버튼 클릭 시도
-        try:
-            page_numbers = driver.find_elements(By.CSS_SELECTOR, ".list_paging li:not(.on) a")
-            if page_numbers:
-                next_page = page_numbers[0]  # 첫 번째 비활성 페이지
-                driver.execute_script("arguments[0].click();", next_page)
-                print("다음 페이지 번호 클릭")
-                driver.switch_to.default_content()
-                time.sleep(3)
-                return True
-        except:
-            pass
-        
-        print("다음 페이지 버튼을 찾을 수 없음")
-        driver.switch_to.default_content()
-        return False
-        
-    except Exception as e:
-        print(f"페이지 이동 오류: {e}")
-        driver.switch_to.default_content()
-        return False
-
-try:
-    wait = WebDriverWait(driver, 10)
-    
-    # 로그인
-    print("카카오 로그인 중...")
-    driver.get(LOGIN_URL)
-    
-    id_input = wait.until(EC.presence_of_element_located((By.NAME, "loginId")))
-    id_input.clear()
-    id_input.send_keys(KAKAO_ID)
-    
-    pw_input = driver.find_element(By.NAME, "password")
-    pw_input.clear()
-    pw_input.send_keys(KAKAO_PASSWORD)
-    
-    login_btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
-    login_btn.click()
-    
-    time.sleep(3)
-    input("인증 완료 후 Enter를 누르세요.")
-    
-    # 카페 게시판으로 이동
-    driver.get(TARGET_CAFE_URL)
-    time.sleep(3)
-    driver.get(f"{driver.current_url}/SjqQ")
-    time.sleep(5)  # iframe 로딩 대기
-    
-    print(f"현재 게시판: {driver.current_url}")
-    
-    total_downloads = 0
-    page_count = 1
-    max_pages = 5
-    
-    while page_count <= max_pages:
-        print(f"\n{'='*50}")
-        print(f"📄 {page_count}페이지 처리 중...")
-        print(f"{'='*50}")
-        
-        # 현재 페이지의 게시글 링크 수집
-        post_links = get_post_links_from_current_page()
-        
-        if not post_links:
-            print("❌ 게시글을 찾을 수 없습니다.")
-            break
-        
-        print(f"발견된 게시글: {len(post_links)}개")
-        
-        # 각 게시글 처리
-        for i, post in enumerate(post_links[:10], 1):
-            print(f"\n[게시글 {i}/{min(10, len(post_links))}] 처리: {post['title']}")
-            
-            try:
-                # 새 탭에서 게시글 열기
-                driver.execute_script(f"window.open('{post['url']}', '_blank');")
-                driver.switch_to.window(driver.window_handles[-1])
+                # iframe 전환 후 대기 (tests.py 방식)
                 time.sleep(2)
-                
-                # MP4 URL 추출
-                mp4_urls = extract_mp4_urls()
-                
-                if mp4_urls:
-                    print(f"MP4 파일 {len(mp4_urls)}개 발견!")
-                    for j, mp4_url in enumerate(mp4_urls):
-                        filename = f"page_{page_count}_post_{i}_video_{j+1}.mp4"
-                        if download_mp4(mp4_url, filename):
-                            total_downloads += 1
-                else:
-                    print("MP4 파일 없음")
-                
-                # 탭 닫기
-                driver.close()
-                driver.switch_to.window(driver.window_handles[0])
-                
-                time.sleep(1)
-                
+
+                # article-list 확인 (tests.py 방식)
+                try:
+                    browser.find_element(By.ID, "article-list")
+                    print(f"✅ iframe 인덱스 [{i}] 전환 성공! (article-list 발견)")
+                    board_iframe_found = True
+                    break
+                except:
+                    print(f"  ⚠️ iframe 인덱스 [{i}] - article-list 없음")
+
             except Exception as e:
-                print(f"게시글 처리 중 오류: {e}")
-                if len(driver.window_handles) > 1:
-                    driver.close()
-                    driver.switch_to.window(driver.window_handles[0])
-        
-        # 다음 페이지로 이동
-        page_count += 1
-        if page_count <= max_pages:
-            print(f"\n다음 페이지({page_count})로 이동 중...")
-            if not click_next_page():
-                print("더 이상 페이지가 없습니다.")
-                break
-    
-    print(f"\n🎉 크롤링 완료!")
-    print(f"📊 총 {page_count-1}페이지 처리")
-    print(f"📁 총 {total_downloads}개 파일 다운로드")
-    print(f"📂 다운로드 폴더: {DOWNLOAD_DIR.absolute()}")
+                print(f"  ❌ iframe 인덱스 [{i}] 전환 실패: {e}")
+                try:
+                    browser.switch_to.default_content()
+                except:
+                    pass
 
-except Exception as e:
-    print(f"오류 발생: {e}")
-    import traceback
-    traceback.print_exc()
+    if not board_iframe_found:
+        print("⚠️ 적절한 iframe을 찾지 못했습니다. 메인 프레임에서 진행합니다.")
+        browser.switch_to.default_content()
 
-finally:
-    input("작업 완료. Enter를 누르면 브라우저가 종료됩니다...")
-    # driver.quit()
+    print("✅ iframe 처리 완료")
+    time.sleep(2)
