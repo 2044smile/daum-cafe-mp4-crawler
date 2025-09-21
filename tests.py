@@ -23,11 +23,53 @@ TARGET_CAFE_URL = os.getenv('TARGET_CAFE_URL')
 DOWNLOAD_DIR = Path("downloads")
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 
+def extract_post_url_and_title(row):
+    """게시글 행에서 URL과 제목 추출"""
+    try:
+        title_cell = None
+        title_selectors = [".td_title", ".title", "td.title", "td:nth-child(3)", "td:nth-child(4)"]
+
+        for selector in title_selectors:
+            try:
+                title_cell = row.find_element(By.CSS_SELECTOR, selector)
+                break
+            except:
+                continue
+
+        if not title_cell:
+            # 모든 td에서 링크가 있는 것 찾기
+            tds = row.find_elements(By.TAG_NAME, "td")
+            for td in tds:
+                links = td.find_elements(By.TAG_NAME, "a")
+                if links:
+                    title_cell = td
+                    break
+
+        if title_cell:
+            # 링크 찾기
+            link_elements = title_cell.find_elements(By.TAG_NAME, "a")
+            for link in link_elements:
+                href = link.get_attribute('href')
+                title = link.text.strip()
+
+                if href and title and len(title) > 2:
+                    # 게시글 URL 패턴 확인
+                    valid_patterns = ['bbs_read', 'read', 'view', 'article']
+                    is_valid_link = any(pattern in href.lower() for pattern in valid_patterns)
+
+                    if is_valid_link:
+                        return href, title
+
+    except Exception as e:
+        print(f"게시글 URL 추출 오류: {e}")
+
+    return None, None
+
 def analyze_post_streams(browser, post_url, post_title):
     """게시글의 네트워크 스트림 분석"""
 
     print(f"\n{'='*60}")
-    print(f"🎬 게시글 스트림 분석: {post_title[:30]}...")
+    print(f"🎬 게시글 스트림 분석: {post_title}...")
     print(f"{'='*60}")
 
     try:
@@ -91,7 +133,7 @@ def analyze_post_streams(browser, post_url, post_title):
                     print(f"🔗 URL: {url[:80]}...")
 
                     # 파일명 생성
-                    filename = f"{post_title[:20]}_{i}_480p.mp4".replace('/', '_').replace('\\', '_').replace(':', '_')
+                    filename = f"{post_title}_{i}_480p.mp4".replace('/', '_').replace('\\', '_').replace(':', '_')
                     filepath = DOWNLOAD_DIR / filename
 
                     print(f"📁 저장할 파일: {filename}")
@@ -428,100 +470,165 @@ if __name__ == "__main__":
                         continue
 
                 if post_rows:
-                    # 처음 3개 게시글 정보 확인
-                    for i, row in enumerate(post_rows[:3]):
-                        try:
-                            # 제목 칸 찾기
-                            title_cell = None
-                            title_selectors = [".td_title", ".title", "td.title", "td:nth-child(3)", "td:nth-child(4)"]
+                    print(f"\n🎯 SjqQ 게시판에서 모든 페이지의 모든 게시글 처리 시작...")
 
-                            for selector in title_selectors:
-                                try:
-                                    title_cell = row.find_element(By.CSS_SELECTOR, selector)
-                                    break
-                                except:
-                                    continue
+                    # 페이지네이션 처리 (무제한, 마지막 페이지까지)
+                    page_num = 1
+                    while True:  # 마지막 페이지까지 무제한 루프
+                        print(f"\n{'='*60}")
+                        print(f"📄 {page_num}페이지 처리 중...")
+                        print(f"{'='*60}")
 
-                            if not title_cell:
-                                # 모든 td에서 링크가 있는 것 찾기
-                                tds = row.find_elements(By.TAG_NAME, "td")
-                                for td in tds:
-                                    links = td.find_elements(By.TAG_NAME, "a")
-                                    if links:
-                                        title_cell = td
-                                        break
-
-                            if title_cell:
-                                # 링크 찾기
-                                link_elements = title_cell.find_elements(By.TAG_NAME, "a")
-                                for link in link_elements:
-                                    href = link.get_attribute('href')
-                                    title = link.text.strip()
-
-                                    if href and title and len(title) > 2:
-                                        # 게시글 URL 패턴 확인
-                                        valid_patterns = ['bbs_read', 'read', 'view', 'article']
-                                        is_valid_link = any(pattern in href.lower() for pattern in valid_patterns)
-
-                                        if is_valid_link:
-                                            print(f"    [{i+1}] {title[:50]}...")
-                                            print(f"        URL: {href}")
-                                            break
-
-                        except Exception as e:
-                            print(f"    [{i+1}] 행 분석 오류: {e}")
-                else:
-                    print("  ❌ 게시글 행을 찾을 수 없음")
-
-                # 첫 번째 게시글에 들어가서 네트워크 스트림 확인
-                if post_rows:
-                    print("\n🎬 첫 번째 게시글에서 네트워크 스트림 분석 시작...")
-                    first_post_url = None
-
-                    # 첫 번째 게시글 URL 추출
-                    try:
-                        first_row = post_rows[0]
-                        title_cell = None
-                        title_selectors = [".td_title", ".title", "td.title", "td:nth-child(3)", "td:nth-child(4)"]
-
-                        for selector in title_selectors:
+                        # 2페이지부터는 페이지 이동
+                        if page_num > 1:
                             try:
-                                title_cell = first_row.find_element(By.CSS_SELECTOR, selector)
+                                print(f"🔄 {page_num}페이지로 이동 중...")
+
+                                # 페이지 번호 링크 찾기 (여러 방법 시도)
+                                page_selectors = [
+                                    "a.link_num span.num_item",
+                                    "a[href*='javascript:'] span",
+                                    "a[href*='page'] span",
+                                ]
+
+                                page_found = False
+                                for selector in page_selectors:
+                                    try:
+                                        page_elements = browser.find_elements(By.CSS_SELECTOR, selector)
+                                        for element in page_elements:
+                                            if element.text.strip() == str(page_num):
+                                                page_button = element.find_element(By.XPATH, "..")
+                                                page_button.click()
+                                                print(f"  ✅ {page_num}페이지 클릭 성공")
+                                                time.sleep(3)  # 페이지 로딩 대기
+                                                page_found = True
+                                                break
+                                        if page_found:
+                                            break
+                                    except:
+                                        continue
+
+                                if not page_found:
+                                    print(f"  ⚠️ {page_num}페이지 버튼을 찾을 수 없음. 더 이상 페이지가 없을 가능성")
+                                    break
+
+                            except Exception as e:
+                                print(f"  ❌ {page_num}페이지 이동 실패: {e}")
                                 break
+
+                        # 현재 페이지의 게시글 목록 다시 가져오기
+                        current_post_rows = []
+                        for selector in row_selectors:
+                            try:
+                                rows = browser.find_elements(By.CSS_SELECTOR, selector)
+                                if rows:
+                                    current_post_rows = rows
+                                    print(f"  ✅ {page_num}페이지에서 게시글 {len(current_post_rows)}개 발견")
+                                    break
                             except:
                                 continue
 
-                        if not title_cell:
-                            tds = first_row.find_elements(By.TAG_NAME, "td")
-                            for td in tds:
-                                links = td.find_elements(By.TAG_NAME, "a")
-                                if links:
-                                    title_cell = td
+                        if not current_post_rows:
+                            print(f"  ❌ {page_num}페이지에서 게시글을 찾을 수 없음")
+                            continue
+
+                        # 먼저 모든 게시글의 URL과 제목을 수집 (stale element 문제 방지)
+                        print(f"  🔍 {page_num}페이지의 모든 게시글 URL 수집 중...")
+                        post_data_list = []
+
+                        for i, row in enumerate(current_post_rows):
+                            try:
+                                post_url, post_title = extract_post_url_and_title(row)
+                                if post_url and post_title:
+                                    post_data_list.append((post_url, post_title))
+                                    print(f"    ✅ [{page_num}-{i+1}] {post_title[:50]}...")
+                                else:
+                                    print(f"    ❌ [{page_num}-{i+1}] URL 추출 실패")
+                            except Exception as e:
+                                print(f"    ❌ [{page_num}-{i+1}] URL 수집 오류: {e}")
+
+                        print(f"  📊 {page_num}페이지에서 {len(post_data_list)}개 게시글 URL 수집 완료")
+
+                        # 수집된 URL들을 하나씩 처리
+                        for i, (post_url, post_title) in enumerate(post_data_list, 1):
+                            try:
+                                print(f"\n  🎬 [{page_num}-{i}] 게시글 처리 중...")
+                                print(f"    📋 제목: {post_title[:50]}...")
+                                print(f"    🔗 URL: {post_url}")
+
+                                # 게시글 분석 및 다운로드
+                                analyze_post_streams(browser, post_url, f"[{page_num}-{i}]{post_title}")
+
+                                # 게시판으로 다시 돌아가기
+                                print(f"    🔄 게시판으로 돌아가는 중...")
+                                browser.back()
+                                time.sleep(2)
+
+                                # iframe 다시 전환 (게시글에서 돌아온 후)
+                                try:
+                                    browser.switch_to.frame("down")
+                                    time.sleep(1)
+                                except:
+                                    print(f"    ⚠️ iframe 재전환 실패")
+
+                            except Exception as e:
+                                print(f"    ❌ 게시글 [{page_num}-{i}] 처리 오류: {e}")
+                                # 오류 발생시 게시판으로 돌아가기
+                                try:
+                                    browser.back()
+                                    time.sleep(2)
+                                    browser.switch_to.frame("down")
+                                except:
+                                    pass
+
+                        print(f"\n✅ {page_num}페이지 처리 완료")
+
+                        # 다음 페이지 존재 여부 확인
+                        next_page_num = page_num + 1
+                        next_page_exists = False
+
+                        try:
+                            # 다음 페이지 번호가 있는지 확인
+                            page_elements = browser.find_elements(By.CSS_SELECTOR, "a.link_num span.num_item")
+                            for element in page_elements:
+                                if element.text.strip() == str(next_page_num):
+                                    next_page_exists = True
                                     break
 
-                        if title_cell:
-                            link_elements = title_cell.find_elements(By.TAG_NAME, "a")
-                            for link in link_elements:
-                                href = link.get_attribute('href')
-                                title = link.text.strip()
+                            # 다음 버튼도 확인
+                            if not next_page_exists:
+                                next_button_selectors = [
+                                    "a.link_next",  # 다음 버튼 클래스
+                                    "a[href*='javascript:'][title*='다음']",  # 제목에 다음이 포함
+                                    "a[href*='javascript:']"  # 모든 자바스크립트 링크 중에서
+                                ]
 
-                                if href and title and len(title) > 2:
-                                    valid_patterns = ['bbs_read', 'read', 'view', 'article']
-                                    is_valid_link = any(pattern in href.lower() for pattern in valid_patterns)
+                                for selector in next_button_selectors:
+                                    try:
+                                        buttons = browser.find_elements(By.CSS_SELECTOR, selector)
+                                        for button in buttons:
+                                            button_text = button.text.strip()
+                                            if ('다음' in button_text or '>' in button_text) and button.is_enabled():
+                                                next_page_exists = True
+                                                break
+                                        if next_page_exists:
+                                            break
+                                    except:
+                                        continue
 
-                                    if is_valid_link:
-                                        first_post_url = href
-                                        first_post_title = title
-                                        print(f"  📋 분석할 게시글: {first_post_title[:50]}...")
-                                        print(f"  🔗 URL: {first_post_url}")
-                                        break
+                        except Exception as e:
+                            print(f"  ⚠️ 다음 페이지 확인 중 오류: {e}")
 
-                    except Exception as e:
-                        print(f"  ❌ 첫 번째 게시글 URL 추출 실패: {e}")
+                        if not next_page_exists:
+                            print(f"\n🏁 마지막 페이지({page_num}페이지)에 도달했습니다.")
+                            break
 
-                    # 게시글로 이동하여 네트워크 스트림 분석
-                    if first_post_url:
-                        analyze_post_streams(browser, first_post_url, first_post_title)
+                        page_num += 1  # 다음 페이지로
+
+                    print(f"\n🎉 SjqQ 게시판 모든 페이지({page_num}페이지)의 모든 게시글 처리 완료!")
+
+                else:
+                    print("  ❌ 게시글 행을 찾을 수 없음")
 
                 board_iframe_found = True
                 break
