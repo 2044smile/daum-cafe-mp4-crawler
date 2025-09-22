@@ -1,5 +1,21 @@
 # DAUM-CAFE-MP4-CRAWLER
 
+## 학습
+
+### Selenium
+
+- WebDriverWait(browser, 10)
+  - 브라우저에서 최대 10초까지 특정 조건을 기다리는 객체 생성
+- id_input = wait.until(EC.element_to_be_clickable((By.NAME, "loginId")))
+  - EC(Expected Conditions; 예상 조건)
+  - HTML에서 <input name="loginId"> 태그를 찾음
+  - 단순히 존재하는 것이 아니라 **클릭 가능한 상태**까지 기다림
+    - 클릭 가능한 상태 = 요소가 보이고(visible) + 활성화되어 있음(enabled)
+  - .clear()
+    - 입력 필드에 기존에 입력되어 있던 텍스트를 삭제
+  - .send_keys()
+    - 새로운 값 입력
+
 ## 라이브러리
 
 ### Selenium + selenium-wire
