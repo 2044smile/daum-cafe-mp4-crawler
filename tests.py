@@ -109,9 +109,41 @@ def analyze_post_streams(browser, post_url, post_title):
         print(f"⏳ 네트워크 스트림 로딩 대기...")
         time.sleep(8)
 
+        # 🔍 kamp 요청이 완료될 때까지 추가 대기
+        print(f"🔍 kamp 요청 완료 대기...")
+        for retry in range(5):  # 최대 5번 재시도
+            kamp_count = sum(1 for req in browser.requests[initial_request_count:]
+                           if 'kamp.daum.net' in req.url.lower())
+            if kamp_count > 0:
+                print(f"  ✅ kamp 요청 {kamp_count}개 발견, 응답 완료 대기 중...")
+                time.sleep(3)  # kamp 응답 완료 대기
+                break
+            else:
+                print(f"  ⏳ kamp 요청 대기 중... ({retry+1}/5)")
+                time.sleep(2)
+
         # 새로운 네트워크 요청 분석
         new_requests = browser.requests[initial_request_count:]
         print(f"📊 새로운 네트워크 요청: {len(new_requests)}개")
+
+        # 🔍 네트워크 요청 캡처 확인 (디버깅)
+        if len(new_requests) == 0:
+            print("⚠️ 네트워크 요청이 캡처되지 않았습니다!")
+            print("🔧 seleniumwire 프록시 상태 확인...")
+            print(f"   프록시 설정: {browser.proxy if hasattr(browser, 'proxy') else '없음'}")
+            print(f"   전체 요청 수: {len(browser.requests)}개")
+        else:
+            print("✅ 네트워크 요청 캡처 성공!")
+            # 🔍 요청 도메인 미리보기 (처음 5개)
+            print("📋 캡처된 요청 미리보기:")
+            for i, req in enumerate(new_requests[:5]):
+                try:
+                    domain = req.url.split('/')[2] if '://' in req.url else req.url[:50]
+                    print(f"   [{i+1}] {domain}")
+                except:
+                    print(f"   [{i+1}] {req.url[:50]}...")
+            if len(new_requests) > 5:
+                print(f"   ... 및 {len(new_requests)-5}개 더")
 
         # 스트림 파일 분석
         download_targets = analyze_stream_requests(new_requests)
@@ -247,8 +279,41 @@ def analyze_stream_requests(requests):
         print(f"\n🔍 kamp 요청에서 streams 데이터 추출...")
         for i, request in enumerate(kamp_requests):
             try:
+                print(f"  🔍 kamp [{i+1}] 요청 상태 확인...")
+                print(f"     URL: {request.url}")
+                print(f"     응답 있음: {request.response is not None}")
+                if request.response:
+                    print(f"     상태 코드: {request.response.status_code}")
+                    print(f"     응답 바디 있음: {request.response.body is not None}")
+                    print(f"     응답 헤더: {dict(request.response.headers)}")
+
                 if request.response and request.response.body:
-                    body = request.response.body.decode('utf-8', errors='ignore')
+                    # 🔧 gzip 압축 해제 처리
+                    raw_body = request.response.body
+
+                    try:
+                        # gzip 압축 확인 및 해제
+                        if request.response.headers.get('content-encoding') == 'gzip':
+                            import gzip
+                            body = gzip.decompress(raw_body).decode('utf-8', errors='ignore')
+                            print(f"  ✅ gzip 압축 해제 성공!")
+                        else:
+                            body = raw_body.decode('utf-8', errors='ignore')
+                    except Exception as decompress_error:
+                        print(f"  ⚠️ 압축 해제 실패: {decompress_error}")
+                        # 원시 바이트로 시도
+                        try:
+                            body = raw_body.decode('utf-8', errors='ignore')
+                        except:
+                            body = str(raw_body)
+
+                    # 🔍 kamp 응답 전체 내용 디버깅
+                    print(f"  📋 kamp [{i+1}] 응답 크기: {len(body)} bytes")
+                    print(f"  📄 응답 내용 (처음 500자): {body[:500]}...")
+                    print(f"  🔍 'streams' 포함 여부: {'streams' in body}")
+                    print(f"  🔍 'stream' 포함 여부: {'stream' in body}")
+                    print(f"  🔍 'mp4' 포함 여부: {'mp4' in body}")
+                    print(f"  🔍 '480' 포함 여부: {'480' in body}")
 
                     if 'streams' in body:
                         print(f"  ✅ kamp 요청 [{i+1}]에서 streams 데이터 발견!")
@@ -261,26 +326,32 @@ def analyze_stream_requests(requests):
                             if 'streams' in data:
                                 streams = data['streams']
                                 print(f"    📊 streams 데이터 타입: {type(streams)}")
+                                print(f"    📋 streams 내용: {streams}")
 
-                                # streams가 리스트인 경우 (name, protocol 구조)
+                                # streams가 리스트인 경우 (실제 구조에 맞춤)
                                 if isinstance(streams, list):
-                                    print(f"    🎬 streams 배열에서 480p MP4 검색:")
+                                    print(f"    🎬 streams 배열에서 480p MP4 검색 (총 {len(streams)}개):")
                                     for j, stream in enumerate(streams):
                                         if isinstance(stream, dict):
                                             name = stream.get('name', '')
                                             protocol = stream.get('protocol', '')
                                             url = stream.get('url', '')
+                                            status = stream.get('status', '')
 
-                                            print(f"      [{j+1}] name: '{name}', protocol: '{protocol}'")
+                                            print(f"      [{j+1}] name='{name}', protocol='{protocol}', status='{status}'")
+                                            print(f"           URL: {url[:80]}..." if url else "           URL: 없음")
 
-                                            # 480p + mp4 조건 확인
-                                            if '480' in name.lower() and 'mp4' in protocol.lower():
-                                                print(f"      ✅ 480p MP4 스트림 발견!")
-                                                print(f"      🔗 URL: {url}")
+                                            # 🎯 정확한 조건: name="480p" AND protocol="mp4"
+                                            if name == '480p' and protocol == 'mp4' and url:
+                                                print(f"      🎉 정확한 480p MP4 스트림 발견!")
                                                 download_targets.append(url)
-                                            elif url and '.mp4' in url.lower() and '480p' in url.lower():
-                                                print(f"      ✅ URL에서 480p MP4 패턴 발견!")
-                                                print(f"      🔗 URL: {url}")
+                                            # 🎯 백업 조건: 480p가 이름에 포함되고 URL이 MP4
+                                            elif '480' in name.lower() and url and '.mp4' in url.lower():
+                                                print(f"      ✅ 480p MP4 패턴 발견!")
+                                                download_targets.append(url)
+                                            # 🎯 추가 조건: URL에서 직접 480P 패턴 확인
+                                            elif url and ('480p' in url.lower() or '480P' in url) and '.mp4' in url.lower():
+                                                print(f"      ✅ URL에서 480P MP4 패턴 발견!")
                                                 download_targets.append(url)
 
                                 # streams가 딕셔너리인 경우 (기존 방식)
@@ -317,7 +388,33 @@ def analyze_stream_requests(requests):
             except Exception as e:
                 print(f"  ❌ kamp 요청 [{i+1}] 분석 오류: {e}")
 
-    # 일반 MP4 요청에서도 480p 찾기 (kamp에서 못 찾은 경우)
+    # 🔍 모든 요청에서 Daum 비디오 URL 검색 (핵심 수정!)
+    print(f"\n🔍 전체 요청에서 Daum 비디오 URL 검색...")
+    for request in requests:
+        try:
+            url = request.url
+            url_lower = url.lower()
+
+            # Daum 비디오 도메인 + MP4 + 480P 패턴
+            daum_domains = ['play.daum.net', 'kdnv-skb-orisa-edge.play.daum.net', 'kamp.daum.net']
+
+            if any(domain in url_lower for domain in daum_domains) and '.mp4' in url_lower:
+                # 480P 확인 (대소문자 구분 없이)
+                if '480p' in url_lower or '480P' in url:
+                    if url not in download_targets:
+                        download_targets.append(url)
+                        print(f"  🎉 Daum 480P MP4 발견: {url}")
+
+            # orisa-token이 포함된 MP4 URL (추가 검색)
+            elif 'orisa-token' in url_lower and '.mp4' in url_lower:
+                if url not in download_targets:
+                    download_targets.append(url)
+                    print(f"  🎯 orisa-token MP4 발견: {url}")
+
+        except Exception as e:
+            continue
+
+    # 일반 MP4 요청에서도 480p 찾기 (기존 로직 유지)
     for request in mp4_files:
         url = request.url
         if '480p' in url.lower() and url not in download_targets:
@@ -347,8 +444,35 @@ if __name__ == "__main__":
     customService = Service(ChromeDriverManager().install())
     customOption = Options()
 
-    # 로그인
-    browser = webdriver.Chrome(service=customService, options=customOption)
+    # 🔧 Chrome 옵션 개선 (HTTP protocol error 방지)
+    customOption.add_argument('--disable-web-security')
+    customOption.add_argument('--allow-running-insecure-content')
+    customOption.add_argument('--disable-features=VizDisplayCompositor')
+    customOption.add_argument('--no-sandbox')  # Linux에서 필요할 수 있음
+    customOption.add_argument('--disable-dev-shm-usage')  # 메모리 문제 방지
+
+    # 🔧 seleniumwire 설정 (네트워크 요청 캡처를 위해 필수!)
+    seleniumwire_options = {
+        'addr': '127.0.0.1',  # 프록시 주소
+        'port': 0,  # 자동 포트 할당
+        'auto_config': True,  # 자동 설정
+        'suppress_connection_errors': True,  # 🔧 연결 오류 억제 (HTTP protocol error 방지)
+        'verify_ssl': False,  # SSL 검증 비활성화
+        'connection_timeout': 30,  # 연결 타임아웃
+        'read_timeout': 30,  # 읽기 타임아웃
+    }
+
+    print("🔧 seleniumwire 프록시 설정 중...")
+
+    # 로그인 (seleniumwire_options 추가!)
+    browser = webdriver.Chrome(
+        service=customService,
+        options=customOption,
+        seleniumwire_options=seleniumwire_options
+    )
+
+    print(f"✅ seleniumwire 프록시 활성화: {browser.proxy}")
+    print("📡 이제 모든 네트워크 요청이 캡처됩니다!")
     wait = WebDriverWait(browser, 10)
 
     browser.get(LOGIN_URL)
@@ -394,7 +518,7 @@ if __name__ == "__main__":
     time.sleep(5)
 
     # 특정 게시판으로 이동
-    board_url = f"{TARGET_CAFE_URL}/SjqQ"
+    board_url = f"{TARGET_CAFE_URL}/ThHa"
     browser.get(board_url)
     print(f"현재 URL: {browser.current_url}")
     time.sleep(5)
