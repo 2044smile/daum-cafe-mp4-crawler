@@ -518,7 +518,7 @@ if __name__ == "__main__":
     time.sleep(5)
 
     # 특정 게시판으로 이동
-    board_url = f"{TARGET_CAFE_URL}/ThHa"
+    board_url = f"{TARGET_CAFE_URL}/ThHZ"
     browser.get(board_url)
     print(f"현재 URL: {browser.current_url}")
     time.sleep(5)
