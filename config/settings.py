@@ -20,13 +20,13 @@ class SeleniumConfig:
     ]
 
     SELENIUMWIRE_OPTIONS = {
-        'addr': '127.0.0.1',
-        'port': 0,
-        'auto_config': True,
-        'suppress_connection_errors': True,
-        'verify_ssl': False,
-        'connection_timeout': 30,
-        'read_timeout': 30,
+        'addr': '127.0.0.1',  # 프록시 주소
+        'port': 0,  # 자동 포트 할당
+        'auto_config': True,  # 자동 설정
+        'suppress_connection_errors': True,  # 연결 오류 억제 (HTTP protocol error 방지)
+        'verify_ssl': False,  # SSL 검증 비활성화
+        'connection_timeout': 30,  # 연결 타임아웃
+        'read_timeout': 30,  # 읽기 타임아웃
     }
 
     IMPLICIT_WAIT = 10

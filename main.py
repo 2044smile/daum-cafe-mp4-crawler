@@ -445,15 +445,7 @@ if __name__ == "__main__":
     for option in SeleniumConfig.CHROME_OPTIONS:
         customOption.add_argument(option)
 
-    seleniumwire_options = {
-        'addr': '127.0.0.1',  # 프록시 주소
-        'port': 0,  # 자동 포트 할당
-        'auto_config': True,  # 자동 설정
-        'suppress_connection_errors': True,  # 🔧 연결 오류 억제 (HTTP protocol error 방지)
-        'verify_ssl': False,  # SSL 검증 비활성화
-        'connection_timeout': 30,  # 연결 타임아웃
-        'read_timeout': 30,  # 읽기 타임아웃
-    }
+    seleniumwire_options = SeleniumConfig.SELENIUMWIRE_OPTIONS
 
     print("🔧 seleniumwire 프록시 설정 중...")
 
