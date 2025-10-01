@@ -11,17 +11,15 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
+from config.settings import DOWNLOAD_DIR, DaumCafeConfig
+
 
 load_dotenv()
 
-KAKAO_ID = os.getenv('KAKAO_ID')
-KAKAO_PASSWORD = os.getenv('KAKAO_PASSWORD')
-LOGIN_URL = os.getenv('LOGIN_URL')
-TARGET_CAFE_URL = os.getenv('TARGET_CAFE_URL')
-
-# 다운로드 폴더 생성
-DOWNLOAD_DIR = Path("downloads")
-DOWNLOAD_DIR.mkdir(exist_ok=True)
+KAKAO_ID = DaumCafeConfig.KAKAO_ID
+KAKAO_PASSWORD = DaumCafeConfig.KAKAO_PASSWORD
+LOGIN_URL = DaumCafeConfig.LOGIN_URL
+TARGET_CAFE_URL = DaumCafeConfig.TARGET_CAFE_URL
 
 def extract_post_url_and_title(row):
     """게시글 행에서 URL과 제목 추출"""
