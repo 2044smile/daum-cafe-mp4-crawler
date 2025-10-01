@@ -15,8 +15,8 @@ class SeleniumConfig:
         '--disable-web-security',
         '--allow-running-insecure-content',
         '--disable-features=VizDisplayCompositor',
-        '--no-sandbox',
-        '--disable-dev-shm-usage'
+        '--no-sandbox',  # Linux에서 필요할 수 있음
+        '--disable-dev-shm-usage'  # 메모리 문제 방지
     ]
 
     SELENIUMWIRE_OPTIONS = {

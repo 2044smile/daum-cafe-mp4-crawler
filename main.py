@@ -11,7 +11,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
-from config.settings import DOWNLOAD_DIR, DaumCafeConfig
+from config.settings import DOWNLOAD_DIR, DaumCafeConfig, SeleniumConfig
 
 
 load_dotenv()
@@ -442,14 +442,9 @@ if __name__ == "__main__":
     customService = Service(ChromeDriverManager().install())
     customOption = Options()
 
-    # 🔧 Chrome 옵션 개선 (HTTP protocol error 방지)
-    customOption.add_argument('--disable-web-security')
-    customOption.add_argument('--allow-running-insecure-content')
-    customOption.add_argument('--disable-features=VizDisplayCompositor')
-    customOption.add_argument('--no-sandbox')  # Linux에서 필요할 수 있음
-    customOption.add_argument('--disable-dev-shm-usage')  # 메모리 문제 방지
+    for option in SeleniumConfig.CHROME_OPTIONS:
+        customOption.add_argument(option)
 
-    # 🔧 seleniumwire 설정 (네트워크 요청 캡처를 위해 필수!)
     seleniumwire_options = {
         'addr': '127.0.0.1',  # 프록시 주소
         'port': 0,  # 자동 포트 할당
