@@ -492,7 +492,7 @@ if __name__ == "__main__":
         print(f"로그인 버튼 클릭 실패 {e}")
     
     # 로그인 처리 대기
-    time.sleep(5)
+    time.sleep(10)
 
     # 현재 URL 확인
     print(f"현재 URL: {browser.current_url}")
