@@ -1,38 +1,6 @@
 # DAUM-CAFE-MP4-CRAWLER
 
-## Q&A
-
-### 왜 Selenium을 사용하지 않고 **Selenium Wire**를 사용할까?
-
-- Selenium
-  - 브라우저를 "조작"만 할 수 있다 (클릭, 입력, 스크롤 등)
-  - 브라우저가 어떤 네트워크 요청을 보내는지 볼 수 없다
-- Selenium Wire
-  - 브라우저와 인터넷 사이에 중간 감시자(프록시)를 놓는다
-  - 브라우저 -> [Selenium Wire 프록시] -> 인터넷
-    - 프록시에서 모든 요청/응답을 가로채서 기록
-
-#### with code
-
-- 브라우저가 kamp.daum.net에 요청을 보내서 480p MP4 URL 정보를 받아온다
-- **Selenium Wire는 프록시로 모든 네트워크 트래픽을 감시하므로 driver.requests로 모든 요청 내역을 확인할 수 있다**
-
-```python
-# network.py
-new_requests = self.driver.requests[initial_count:]  # 새로운 요청들 확인
-for request in new_requests:
-  if 'kamp.daum.net' in request.url:
-    # request.response.body 에서 480p URL 추출
-```
-
-### iframe
-
-- 페이지 안의 또 다른 페이지 다음 카페는 복잡한 구조를 가지고 있었다..
-  - Selenium은 기본적으로 메인 페이지만 볼 수 있다 **게시글 목록은 iframe 안에 있어서 접근할 수가 없었다..**
-- 그래서 게시글 데이터를 가져오려면 iframe으로 먼저 전환해야 게시글들을 볼 수 있다
-  - `navigator.switch_to_iframe("down") # iframe 안으로 들어감`
-  - `posts = driver.find_elements(By.CSS_SELECTOR, "#article-list tbody tr")`
-- id값이 문자열 형태로 저장될 수 있지만 그렇지 않은 경우에는 0,1,2 순서로 번호가 매겨진다
+![alt text](daum_crawler_v2.gif)
 
 ## 모듈화
 
@@ -182,7 +150,39 @@ from src.downloader import VideoDownloader
    - 게시판으로 복귀 (Navigator.back)
 7. 브라우저 종료
 
-## 학습
+## Q&A
+
+### 왜 Selenium을 사용하지 않고 **Selenium Wire**를 사용할까?
+
+- Selenium
+  - 브라우저를 "조작"만 할 수 있다 (클릭, 입력, 스크롤 등)
+  - 브라우저가 어떤 네트워크 요청을 보내는지 볼 수 없다
+- Selenium Wire
+  - 브라우저와 인터넷 사이에 중간 감시자(프록시)를 놓는다
+  - 브라우저 -> [Selenium Wire 프록시] -> 인터넷
+    - 프록시에서 모든 요청/응답을 가로채서 기록
+
+#### with code
+
+- 브라우저가 kamp.daum.net에 요청을 보내서 480p MP4 URL 정보를 받아온다
+- **Selenium Wire는 프록시로 모든 네트워크 트래픽을 감시하므로 driver.requests로 모든 요청 내역을 확인할 수 있다**
+
+```python
+# network.py
+new_requests = self.driver.requests[initial_count:]  # 새로운 요청들 확인
+for request in new_requests:
+  if 'kamp.daum.net' in request.url:
+    # request.response.body 에서 480p URL 추출
+```
+
+### iframe
+
+- 페이지 안의 또 다른 페이지 다음 카페는 복잡한 구조를 가지고 있었다..
+  - Selenium은 기본적으로 메인 페이지만 볼 수 있다 **게시글 목록은 iframe 안에 있어서 접근할 수가 없었다..**
+- 그래서 게시글 데이터를 가져오려면 iframe으로 먼저 전환해야 게시글들을 볼 수 있다
+  - `navigator.switch_to_iframe("down") # iframe 안으로 들어감`
+  - `posts = driver.find_elements(By.CSS_SELECTOR, "#article-list tbody tr")`
+- id값이 문자열 형태로 저장될 수 있지만 그렇지 않은 경우에는 0,1,2 순서로 번호가 매겨진다
 
 ### Selenium
 
@@ -213,11 +213,10 @@ from src.downloader import VideoDownloader
 ### dotenv
 
 - `.env` 파일을 불러와서 환경 변수 관리
-
-### requests
-
-- Selenium이 아니라 **직접 영상 다운로드**를 위해서 사용
-- `requests.get(..., stream=True)` -> 대용량 MP4 파일을 chunk 단위로 다운로드
+  - KAKAO_ID=
+  - KAKAO_PASSWORD=\
+  - LOGIN_URL=https://logins.daum.net/accounts/logout.do?url=https%3A%2F%2Fwww.daum.net
+  - TARGET_CAFE_URL=https://cafe.daum.net/2044smile
 
 ### installed
 
